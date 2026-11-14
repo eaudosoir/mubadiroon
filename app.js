@@ -158,20 +158,14 @@
   var TABS = [['rasd', 'الرصد'], ['board', 'لوحة الصدارة'], ['students', 'الطلاب'], ['log', 'السجل'], ['reports', 'التقارير'], ['settings', 'الإعدادات']];
 
   function render() {
-    var curG = curClass() ? curClass().grade : 0, grades = [];
-    S.classes.forEach(function (c) { if (grades.indexOf(c.grade) < 0) grades.push(c.grade); });
-    var rail = grades.length ? '<aside class="rail no-print" aria-label="الصفوف">' + grades.map(function (g) {
-      return '<button type="button" data-g="' + g + '" aria-label="الصف ' + esc(GRADES[g]) + '"' + (g === curG ? ' aria-current="true"' : '') + '><b>' + ar(g) + '</b><span>' + esc(GRADES[g]) + '</span></button>';
-    }).join('') + '</aside>' : '';
     appEl.innerHTML =
       '<header class="topbar no-print"><div class="in"><h1>المبادرون</h1>' +
-        (curClass() ? '<span class="curcls">' + esc(className(curClass())) + '</span>' : '') +
+        (curClass() && S.step === 'students' ? '<span class="curcls">' + esc(className(curClass())) + '</span>' : '') +
         '<button class="btn small" id="out">خروج</button></div></header>' +
       '<nav class="tabs no-print" role="tablist" aria-label="الأقسام">' +
         TABS.map(function (t) { return '<button class="tab" role="tab" data-t="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') +
-      '</nav>' + rail + '<main class="wrap' + (S.tab === 'rasd' ? ' wide' : '') + '" id="view"></main>' + footer();
+      '</nav><main class="wrap' + (S.tab === 'rasd' && S.step === 'students' ? ' wide' : '') + '" id="view"></main>' + footer();
     $('#out').onclick = function () { logout(); };
-    document.querySelectorAll('.rail [data-g]').forEach(function (b) { b.onclick = function () { openPicker(+b.dataset.g); }; });
     document.querySelectorAll('.tab').forEach(function (b) {
       b.onclick = function () { S.tab = b.dataset.t; render(); };
     });
@@ -188,9 +182,11 @@
 
   /* ---------- الرصد ---------- */
   function viewRasd(v) {
+    if (!S.step) S.step = 'grades';
+    if (S.step !== 'students') return viewPick(v);
     var q = S.filter.trim();
     var list = S.board.filter(function (s) { return !q || s.full_name.indexOf(q) !== -1; });
-    var html = '<div class="rasd-head"><h2>' + esc(className(curClass())) + ' <span class="muted">— ' + ar(S.board.length) + ' طالبًا</span></h2>' +
+    var html = '<div class="rasd-head"><button type="button" class="btn ghost small" id="bk">رجوع</button><h2>' + esc(className(curClass())) + ' <span class="muted">— ' + ar(S.board.length) + ' طالبًا</span></h2>' +
       '<div class="field"><label class="sr" for="q">بحث عن طالب</label><input id="q" type="search" value="' + esc(S.filter) + '" placeholder="ابحث عن طالب"></div></div>';
     if (!S.board.length) {
       html += '<div class="card empty">لا يوجد طلاب في هذا الفصل بعد. أضفهم من قسم «الطلاب».</div>';
@@ -205,6 +201,7 @@
       }).join('') + '</div>';
     }
     v.innerHTML = html;
+    $('#bk').onclick = function () { S.step = 'sections'; S.pickGrade = curClass() ? curClass().grade : S.pickGrade; render(); };
     var q1 = $('#q');
     q1.oninput = function () { S.filter = q1.value; var pos = q1.selectionStart; viewRasd(v); var n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
     v.querySelectorAll('.circle').forEach(function (b) { b.onclick = function () { openSheet(b.dataset.id); }; });
@@ -217,25 +214,26 @@
     return (w[0] === 'عبد' || w[0] === 'أبو' || w[0] === 'ابو' ? w.slice(0, 3) : w.slice(0, 2)).join(' ');
   }
 
-  /* اختيار الفصل: دوائر كبيرة في المنتصف لفصول الصف المختار */
-  function openPicker(grade) {
-    var cs = S.classes.filter(function (c) { return c.grade === grade; });
-    var sc = document.createElement('div'); sc.className = 'pick'; sc.setAttribute('role', 'dialog'); sc.setAttribute('aria-modal', 'true');
-    sc.innerHTML = '<button type="button" class="btn ghost small pk-x" id="pkx">إغلاق</button>' +
-      '<h2>الصف ' + esc(GRADES[grade]) + '</h2><p class="muted">اختر الفصل</p>' +
-      '<div class="pk-row">' + cs.map(function (c, i) {
-        return '<button type="button" class="pk-c' + (c.id === S.classId ? ' on' : '') + '" style="--i:' + i + '" data-c="' + c.id + '"><span>فصل</span><b>' + esc(c.section) + '</b></button>';
-      }).join('') + '</div>';
-    document.body.appendChild(sc);
-    function close() { sc.remove(); document.removeEventListener('keydown', onKey); }
-    function onKey(e) { if (e.key === 'Escape') close(); }
-    document.addEventListener('keydown', onKey);
-    $('#pkx', sc).onclick = close;
-    sc.onclick = function (e) { if (e.target === sc) close(); };
-    sc.querySelectorAll('[data-c]').forEach(function (b) {
-      b.onclick = async function () { S.classId = b.dataset.c; lsSet('mb_class', S.classId); S.filter = ''; S.tab = 'rasd'; close(); await loadClass(); };
+  /* الصفوف ثم الفصول: دوائر كبيرة فقط، بلا أسماء طلاب */
+  function viewPick(v) {
+    var html;
+    if (S.step === 'sections' && S.pickGrade) {
+      var cs = S.classes.filter(function (c) { return c.grade === S.pickGrade; });
+      html = '<div class="stage"><button type="button" class="btn ghost small bk" id="bk">رجوع</button>' +
+        '<h2>الصف ' + esc(GRADES[S.pickGrade]) + '</h2><p class="muted">اختر الفصل</p><div class="pk-row">' +
+        cs.map(function (c, i) { return '<button type="button" class="pk-c" style="--i:' + i + '" data-c="' + c.id + '"><span>فصل</span><b>' + esc(c.section) + '</b></button>'; }).join('') + '</div></div>';
+    } else {
+      S.step = 'grades';
+      var gs = []; S.classes.forEach(function (c) { if (gs.indexOf(c.grade) < 0) gs.push(c.grade); });
+      html = '<div class="stage"><h2>اختر الصف</h2><div class="pk-row">' +
+        gs.map(function (g, i) { return '<button type="button" class="pk-c g" style="--i:' + i + '" data-g="' + g + '"><span>الصف</span><b>' + esc(GRADES[g]) + '</b></button>'; }).join('') + '</div></div>';
+    }
+    v.innerHTML = html;
+    v.querySelectorAll('[data-g]').forEach(function (b) { b.onclick = function () { S.pickGrade = +b.dataset.g; S.step = 'sections'; render(); }; });
+    v.querySelectorAll('[data-c]').forEach(function (b) {
+      b.onclick = async function () { S.classId = b.dataset.c; lsSet('mb_class', S.classId); S.filter = ''; S.step = 'students'; await loadClass(); };
     });
-    var on = sc.querySelector('.on') || sc.querySelector('[data-c]'); if (on) on.focus();
+    var bk = $('#bk'); if (bk) bk.onclick = function () { S.step = 'grades'; render(); };
   }
 
   function openSheet(id) {
