@@ -54,4 +54,16 @@
     if (/permission denied|row-level security/i.test(m)) return 'ليس لديك صلاحية لهذا الإجراء.';
     return m;
   };
+  // شاشة الافتتاح: كلمة «المبادرون» تكبر في منتصف الشاشة ثم يُفتح الموقع بالضغط عليها
+  (function () {
+    function mk() {
+      if (document.getElementById('splash')) return;
+      var b = document.createElement('button');
+      b.id = 'splash'; b.type = 'button'; b.className = 'splash'; b.setAttribute('aria-label', 'المبادرون — اضغط للدخول');
+      b.innerHTML = '<span class="sw">المبادرون</span><span class="sb">مدرسة القادسية الابتدائية</span><span class="sh">اضغط للدخول</span>';
+      b.onclick = function () { b.classList.add('out'); setTimeout(function () { b.remove(); }, 650); };
+      document.body.appendChild(b); b.focus();
+    }
+    if (document.body) mk(); else document.addEventListener('DOMContentLoaded', mk);
+  })();
 })();
