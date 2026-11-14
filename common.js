@@ -43,11 +43,7 @@
     setTimeout(function () { t.remove(); }, opts.ms || (opts.bad ? 6000 : 3500));
   };
 
-  window.signature = function (cls) {
-    return '<span class="sig ' + (cls || '') + '" aria-label="teacher abdullah — Design &amp; Programming">' +
-      '<span class="nm">teacher abdullah</span><span class="dv"></span>' +
-      '<span class="lb">Design<br>&amp; Programming</span></span>';
-  };
+  window.signature = function () { return ''; };
 
   // نصوص أخطاء مفهومة
   window.friendly = function (e) {
