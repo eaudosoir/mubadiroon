@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5F7F63">
+<title>رصيد نقاطي — المبادرون</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@500;700&family=Pinyon+Script&family=Montserrat:wght@600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="offline" class="offline" hidden role="status">لا يوجد اتصال بالإنترنت.</div>
+<div id="app"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+(function () {
+  'use strict';
+  var cfg = window.APP_CONFIG || {}, appEl = document.getElementById('app'), sb = null;
+  function $(s, r) { return (r || document).querySelector(s); }
+  function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function ssSet(k, v) { try { v === null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) {} }
+  function foot() {
+    return '<footer class="footer"><a href="#privacy" id="plink">سياسة الخصوصية</a><span>' + signature() + '</span></footer>';
+  }
+  function top() { return '<div class="sig-top">' + signature() + '</div>'; }
+
+  window.addEventListener('online', sync); window.addEventListener('offline', sync);
+  function sync() { $('#offline').hidden = navigator.onLine; } sync();
+
+  function login(msg) {
+    appEl.innerHTML = top() + '<main class="login"><div class="brand"><h1>رصيد نقاطي</h1>' +
+      '<p class="muted">اكتب رمزك والرقم السري الموجودين في بطاقتك</p></div>' +
+      '<form class="card" id="f" novalidate>' + (msg ? '<div class="err" role="alert">' + esc(msg) + '</div>' : '') +
+      '<div class="field"><label class="req" for="code">الرمز</label><input id="code" inputmode="numeric" autocomplete="off" dir="ltr" maxlength="10" required></div>' +
+      '<div class="field"><label class="req" for="pin">الرقم السري</label><div class="pw">' +
+      '<input id="pin" type="password" inputmode="numeric" autocomplete="off" dir="ltr" maxlength="10" required>' +
+      '<button type="button" class="btn ghost" id="sh" aria-pressed="false">إظهار</button></div></div>' +
+      '<button class="btn" id="go" type="submit">عرض نقاطي</button></form></main>' + foot();
+    bindPrivacy();
+    $('#sh').onclick = function () { var p = $('#pin'), s = p.type === 'password'; p.type = s ? 'text' : 'password'; this.textContent = s ? 'إخفاء' : 'إظهار'; this.setAttribute('aria-pressed', s); };
+    $('#f').onsubmit = function (e) {
+      e.preventDefault();
+      var c = $('#code').value.trim(), p = $('#pin').value.trim();
+      // قبول الأرقام العربية من لوحة المفاتيح
+      var map = '٠١٢٣٤٥٦٧٨٩'; c = c.replace(/[٠-٩]/g, function (d) { return map.indexOf(d); }); p = p.replace(/[٠-٩]/g, function (d) { return map.indexOf(d); });
+      if (!c || !p) return login('اكتب الرمز والرقم السري.');
+      load(c, p);
+    };
+  }
+
+  async function load(code, pin) {
+    appEl.innerHTML = '<main class="wrap"><p class="empty">جارٍ التحميل…</p></main>';
+    var r = await sb.rpc('student_portal', { p_code: code, p_pin: pin });
+    if (r.error) return login(friendly(r.error));
+    var d = r.data;
+    if (!d || !d.ok) {
+      ssSet('mb_s', null);
+      return login(d && d.error === 'locked' ? 'محاولات كثيرة خاطئة. انتظر ١٠ دقائق ثم حاول من جديد، أو اطلب من معلمك رقمًا جديدًا.' : 'الرمز أو الرقم السري غير صحيح.');
+    }
+    ssSet('mb_s', JSON.stringify([code, pin]));
+    card(d);
+  }
+
+  function card(d) {
+    var next = d.next_level ? 'باقٍ لك ' + ar(d.to_next) + ' نقطة لتصل إلى رتبة «' + esc(d.next_level) + '»' : 'وصلت إلى أعلى رتبة. أحسنت!';
+    var pct = d.next_level ? Math.max(4, Math.round(d.total / (d.total + d.to_next) * 100)) : 100;
+    appEl.innerHTML = top() + '<main class="wrap">' +
+      '<section class="hero"><div>' + esc(d.name) + '</div><div style="opacity:.85">الصف ' + esc(GRADES[d.grade]) + ' / ' + esc(d.section) + '</div>' +
+      '<div class="big">' + ar(d.total) + '</div><div>نقطة مبادرة</div>' +
+      (d.level ? '<span class="lv">رتبة ' + esc(d.level) + '</span>' : '<span class="lv">في بداية الطريق</span>') +
+      '<div class="bar" style="background:rgba(255,255,255,.3)"><i style="width:' + pct + '%;background:#fff"></i></div><div>' + next + '</div>' +
+      (d.rank ? '<div>ترتيبك في الفصل: <b>' + ar(d.rank) + '</b> من ' + ar(d.class_size) + '</div>' : '') + '</section>' +
+      '<section class="card"><h2>من أين جاءت نقاطك</h2>' + (d.domains.length ? '<ul class="list">' + d.domains.map(function (x) { return '<li><span>' + esc(x.name) + '</span><b>' + ar(x.points) + '</b></li>'; }).join('') + '</ul>' : '<p class="muted">لم تُسجَّل نقاط بعد. بادر بالمشاركة وسترى نقاطك هنا.</p>') + '</section>' +
+      '<section class="card"><h2>آخر مبادراتك</h2>' + (d.recent.length ? '<ul class="list">' + d.recent.map(function (x) { return '<li><span>' + esc(x.domain || 'مبادرة') + ' — ' + fmtDate(x.at) + '</span><b dir="ltr">+' + ar(x.points) + '</b></li>'; }).join('') + '</ul>' : '<p class="muted">ستظهر هنا مبادراتك الأخيرة.</p>') + '</section>' +
+      (d.honor.length ? '<section class="card"><h2>لوحة الشرف في فصلك</h2><ul class="list">' + d.honor.map(function (x, i) { return '<li><span>' + ar(i + 1) + ' — ' + esc(x.name) + '</span><b>' + ar(x.total) + '</b></li>'; }).join('') + '</ul></section>' : '') +
+      '<div class="row-actions"><button class="btn ghost" id="refresh">تحديث</button><button class="btn ghost" id="exit">خروج</button></div></main>' + foot();
+    bindPrivacy();
+    $('#exit').onclick = function () { ssSet('mb_s', null); login(); };
+    $('#refresh').onclick = function () { var s = JSON.parse(ssGet('mb_s') || 'null'); if (s) load(s[0], s[1]); else login(); };
+  }
+
+  function bindPrivacy() {
+    var l = $('#plink'); if (!l) return;
+    l.onclick = function (e) {
+      e.preventDefault();
+      var sc = document.createElement('div'); sc.className = 'scrim';
+      sc.innerHTML = '<div class="sheet" role="dialog" aria-modal="true"><h2>سياسة الخصوصية</h2>' +
+        '<p>نحفظ اسم الطالب وفصله ونقاطه فقط، ولا نجمع رقم الهوية ولا رقم الجوال. لا يرى الطالب إلا بياناته، ولا تظهر في لوحة الشرف إلا الأسماء الأولى لأعلى خمسة طلاب. يطلع على البيانات معلمو الفصل وإدارة المدرسة فقط.</p>' +
+        '<button class="btn" id="cl">إغلاق</button></div>';
+      document.body.appendChild(sc);
+      $('#cl', sc).onclick = function () { sc.remove(); }; sc.onclick = function (ev) { if (ev.target === sc) sc.remove(); };
+    };
+  }
+
+  if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) {
+    appEl.innerHTML = top() + '<main class="login"><div class="card"><h2>الصفحة قيد الإعداد</h2><p>سيتم تفعيلها قريبًا.</p></div></main>' + foot();
+    return;
+  }
+  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  var saved = JSON.parse(ssGet('mb_s') || 'null');
+  if (saved) load(saved[0], saved[1]); else login();
+})();
+</script>
+</body>
+</html>
