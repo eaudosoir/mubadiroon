@@ -158,19 +158,20 @@
   var TABS = [['rasd', 'الرصد'], ['board', 'لوحة الصدارة'], ['students', 'الطلاب'], ['log', 'السجل'], ['reports', 'التقارير'], ['settings', 'الإعدادات']];
 
   function render() {
-    var opts = S.classes.map(function (c) {
-      return '<option value="' + c.id + '"' + (c.id === S.classId ? ' selected' : '') + '>' + esc(className(c)) + '</option>';
-    }).join('');
+    var curG = curClass() ? curClass().grade : 0, grades = [];
+    S.classes.forEach(function (c) { if (grades.indexOf(c.grade) < 0) grades.push(c.grade); });
+    var rail = grades.length ? '<aside class="rail no-print" aria-label="الصفوف">' + grades.map(function (g) {
+      return '<button type="button" data-g="' + g + '" aria-label="الصف ' + esc(GRADES[g]) + '"' + (g === curG ? ' aria-current="true"' : '') + '><b>' + ar(g) + '</b><span>' + esc(GRADES[g]) + '</span></button>';
+    }).join('') + '</aside>' : '';
     appEl.innerHTML =
       '<header class="topbar no-print"><div class="in"><h1>المبادرون</h1>' +
-        (S.classes.length ? '<label class="sr" for="cls">الفصل</label><select id="cls">' + opts + '</select>' : '') +
+        (curClass() ? '<span class="curcls">' + esc(className(curClass())) + '</span>' : '') +
         '<button class="btn small" id="out">خروج</button></div></header>' +
       '<nav class="tabs no-print" role="tablist" aria-label="الأقسام">' +
         TABS.map(function (t) { return '<button class="tab" role="tab" data-t="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') +
-      '</nav><main class="wrap" id="view"></main>' + footer();
+      '</nav>' + rail + '<main class="wrap' + (S.tab === 'rasd' ? ' wide' : '') + '" id="view"></main>' + footer();
     $('#out').onclick = function () { logout(); };
-    var cls = $('#cls');
-    if (cls) cls.onchange = async function () { S.classId = cls.value; lsSet('mb_class', S.classId); S.filter = ''; await loadClass(); };
+    document.querySelectorAll('.rail [data-g]').forEach(function (b) { b.onclick = function () { openPicker(+b.dataset.g); }; });
     document.querySelectorAll('.tab').forEach(function (b) {
       b.onclick = function () { S.tab = b.dataset.t; render(); };
     });
@@ -189,22 +190,52 @@
   function viewRasd(v) {
     var q = S.filter.trim();
     var list = S.board.filter(function (s) { return !q || s.full_name.indexOf(q) !== -1; });
-    var html = '<div class="field"><label for="q">بحث عن طالب</label><input id="q" type="search" value="' + esc(S.filter) + '" placeholder="اكتب جزءًا من الاسم"></div>';
+    var html = '<div class="rasd-head"><h2>' + esc(className(curClass())) + ' <span class="muted">— ' + ar(S.board.length) + ' طالبًا</span></h2>' +
+      '<div class="field"><label class="sr" for="q">بحث عن طالب</label><input id="q" type="search" value="' + esc(S.filter) + '" placeholder="ابحث عن طالب"></div></div>';
     if (!S.board.length) {
       html += '<div class="card empty">لا يوجد طلاب في هذا الفصل بعد. أضفهم من قسم «الطلاب».</div>';
     } else if (!list.length) {
       html += '<div class="card empty">لا نتائج مطابقة.</div>';
     } else {
-      html += '<div class="grid">' + list.map(function (s) {
-        return '<button class="tile" data-id="' + s.student_id + '"><span class="nm">' + esc(s.full_name) + '</span>' +
-          '<span class="pts">' + ar(s.total) + '</span>' +
-          '<span>' + levelBadge(s.level_name) + (s.today ? ' <span class="badge today">اليوم ' + ar(s.today) + '</span>' : '') + '</span></button>';
+      html += '<div class="circles">' + list.map(function (s) {
+        return '<button class="circle' + (s.level_name ? ' lv-' + esc(s.level_name) : '') + '" data-id="' + s.student_id + '" title="' + esc(s.full_name) + '" aria-label="' + esc(s.full_name) + '">' +
+          (s.today ? '<span class="tdy">+' + ar(s.today) + '</span>' : '') +
+          '<span class="nm">' + esc(shortName(s.full_name)) + '</span><span class="pts">' + ar(s.total) + '</span>' +
+          (s.level_name ? '<span class="lvn">' + esc(s.level_name) + '</span>' : '') + '</button>';
       }).join('') + '</div>';
     }
     v.innerHTML = html;
     var q1 = $('#q');
     q1.oninput = function () { S.filter = q1.value; var pos = q1.selectionStart; viewRasd(v); var n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
-    v.querySelectorAll('.tile').forEach(function (b) { b.onclick = function () { openSheet(b.dataset.id); }; });
+    v.querySelectorAll('.circle').forEach(function (b) { b.onclick = function () { openSheet(b.dataset.id); }; });
+  }
+
+  /* الاسم المختصر داخل الدائرة (الاسم الأول والثاني) */
+  function shortName(n) {
+    var w = String(n).trim().split(/\s+/);
+    if (w.length <= 2) return w.join(' ');
+    return (w[0] === 'عبد' || w[0] === 'أبو' || w[0] === 'ابو' ? w.slice(0, 3) : w.slice(0, 2)).join(' ');
+  }
+
+  /* اختيار الفصل: دوائر كبيرة في المنتصف لفصول الصف المختار */
+  function openPicker(grade) {
+    var cs = S.classes.filter(function (c) { return c.grade === grade; });
+    var sc = document.createElement('div'); sc.className = 'pick'; sc.setAttribute('role', 'dialog'); sc.setAttribute('aria-modal', 'true');
+    sc.innerHTML = '<button type="button" class="btn ghost small pk-x" id="pkx">إغلاق</button>' +
+      '<h2>الصف ' + esc(GRADES[grade]) + '</h2><p class="muted">اختر الفصل</p>' +
+      '<div class="pk-row">' + cs.map(function (c, i) {
+        return '<button type="button" class="pk-c' + (c.id === S.classId ? ' on' : '') + '" style="--i:' + i + '" data-c="' + c.id + '"><span>فصل</span><b>' + esc(c.section) + '</b></button>';
+      }).join('') + '</div>';
+    document.body.appendChild(sc);
+    function close() { sc.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    $('#pkx', sc).onclick = close;
+    sc.onclick = function (e) { if (e.target === sc) close(); };
+    sc.querySelectorAll('[data-c]').forEach(function (b) {
+      b.onclick = async function () { S.classId = b.dataset.c; lsSet('mb_class', S.classId); S.filter = ''; S.tab = 'rasd'; close(); await loadClass(); };
+    });
+    var on = sc.querySelector('.on') || sc.querySelector('[data-c]'); if (on) on.focus();
   }
 
   function openSheet(id) {
