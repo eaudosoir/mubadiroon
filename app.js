@@ -418,17 +418,17 @@
   async function viewLink(v) {
     v.innerHTML = '<div class="card empty">جارٍ التحميل…</div>';
     var rs = await Promise.all([
-      sb.from('link_sources').select('*').eq('source', 'radio').single(),
-      sb.from('external_events').select('id,status,title,event_date,points,raw_name,raw_grade,raw_section,decided_at,students(full_name),classes(grade,section)').order('created_at', { ascending: false }).limit(200)
+      sb.from('link_sources').select('*').order('source'),
+      sb.from('external_events').select('id,source,status,title,event_date,points,raw_name,raw_grade,raw_section,decided_at,students(full_name),classes(grade,section)').order('created_at', { ascending: false }).limit(200)
     ]);
-    var src = rs[0].data, ev = rs[1].data || [];
+    var srcs = rs[0].data || [], src = srcs.find(function (x) { return x.source === S.linkSrc; }) || srcs[0], ev = (rs[1].data || []).filter(function (e) { return !src || e.source === src.source; });
     if (rs[0].error || !src) { v.innerHTML = '<div class="card empty">الربط غير مفعّل بعد في قاعدة البيانات.</div>'; return; }
     var pend = ev.filter(function (e) { return e.status === 'pending'; });
     var unm = ev.filter(function (e) { return e.status === 'unmatched'; });
     var done = ev.filter(function (e) { return e.status === 'approved' || e.status === 'rejected'; }).slice(0, 15);
     function who(e) { return e.students ? e.students.full_name : e.raw_name; }
     function cls(e) { return e.classes ? className(e.classes) : (e.raw_grade ? GRADES[e.raw_grade] + ' / ' + ar(e.raw_section) : ''); }
-    var html = '<div class="card"><h2>' + esc(src.title) + '</h2><p class="muted">تصل مشاركات الطلاب في الإذاعة إلى هنا «بانتظار الاعتماد»، ولا تُحتسب نقاطًا إلا بعد موافقتك. لا تتكرر المشاركة الواحدة أبدًا.</p>';
+    var html = '<div class="row-actions" style="margin-bottom:10px">' + srcs.map(function (x) { return '<button class="btn small' + (x.source === src.source ? '' : ' ghost') + '" data-src="' + x.source + '">' + esc(x.title) + '</button>'; }).join('') + '</div><div class="card"><h2>' + esc(src.title) + '</h2><p class="muted">تصل مشاركات الطلاب إلى هنا «بانتظار الاعتماد»، ولا تُحتسب نقاطًا إلا بعد موافقتك. لا تتكرر المشاركة الواحدة أبدًا.</p>';
     if (S.me.role === 'admin') {
       html += '<div class="row-actions" style="align-items:flex-end"><div class="field" style="min-width:140px"><label for="lkp">نقاط كل مشاركة</label><select id="lkp">' +
         [1, 2, 3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (n === src.points ? ' selected' : '') + '>' + ar(n) + '</option>'; }).join('') + '</select></div>' +
@@ -453,6 +453,7 @@
         return '<tr><td>' + esc(who(e)) + '</td><td>' + esc(e.title || '') + '</td><td>' + (e.status === 'approved' ? '+' + ar(e.points) + ' معتمدة' : 'مرفوضة') + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
     }
     v.innerHTML = html;
+    v.querySelectorAll('[data-src]').forEach(function (b) { b.onclick = function () { S.linkSrc = b.dataset.src; viewLink(v); }; });
     function ids() { return Array.prototype.map.call(v.querySelectorAll('.lkc:checked'), function (c) { return c.value; }); }
     var a = $('#lka'), r = $('#lkr');
     if (a) a.onclick = async function () {
@@ -472,7 +473,7 @@
       b.onclick = async function () { var res = await sb.rpc('link_reject', { p_ids: [b.dataset.ig] }); if (res.error) return toast(friendly(res.error), { bad: true }); viewLink(v); };
     });
     async function conf(newSecret) {
-      var res = await sb.rpc('link_configure', { p_source: 'radio', p_enabled: $('#lke').checked, p_points: +$('#lkp').value, p_new_secret: newSecret });
+      var res = await sb.rpc('link_configure', { p_source: src.source, p_enabled: $('#lke').checked, p_points: +$('#lkp').value, p_new_secret: newSecret });
       if (res.error) { toast(friendly(res.error), { bad: true }); return null; }
       return res;
     }
