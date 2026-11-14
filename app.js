@@ -155,7 +155,7 @@
   }
 
   /* ---------- الهيكل ---------- */
-  var TABS = [['rasd', 'الرصد'], ['board', 'لوحة الصدارة'], ['students', 'الطلاب'], ['log', 'السجل'], ['reports', 'التقارير'], ['settings', 'الإعدادات']];
+  var TABS = [['rasd', 'الرصد'], ['board', 'لوحة الصدارة'], ['students', 'الطلاب'], ['link', 'الربط'], ['log', 'السجل'], ['reports', 'التقارير'], ['settings', 'الإعدادات']];
 
   function render() {
     appEl.innerHTML =
@@ -175,7 +175,7 @@
         (S.me.role === 'admin' ? ' أضف فصلك الأول من «الإعدادات».' : ' اطلب من المدير ربطك بفصولك.') + '</div>';
       return;
     }
-    ({ rasd: viewRasd, board: viewBoard, students: viewStudents, log: viewLog, reports: function (x) { MBReports.view(x, S, sb); }, settings: viewSettings })[S.tab](v);
+    ({ rasd: viewRasd, board: viewBoard, students: viewStudents, log: viewLog, link: viewLink, reports: function (x) { MBReports.view(x, S, sb); }, settings: viewSettings })[S.tab](v);
   }
 
   function levelBadge(name) { return name ? '<span class="lv lv-' + esc(name) + '">' + esc(name) + '</span>' : ''; }
@@ -412,6 +412,76 @@
     v.querySelectorAll('[data-u]').forEach(function (b) {
       b.onclick = async function () { if (await confirmBox('التراجع عن هذه النقطة؟')) undo(b.dataset.u); };
     });
+  }
+
+  /* ---------- الربط مع الإذاعة ---------- */
+  async function viewLink(v) {
+    v.innerHTML = '<div class="card empty">جارٍ التحميل…</div>';
+    var rs = await Promise.all([
+      sb.from('link_sources').select('*').eq('source', 'radio').single(),
+      sb.from('external_events').select('id,status,title,event_date,points,raw_name,raw_grade,raw_section,decided_at,students(full_name),classes(grade,section)').order('created_at', { ascending: false }).limit(200)
+    ]);
+    var src = rs[0].data, ev = rs[1].data || [];
+    if (rs[0].error || !src) { v.innerHTML = '<div class="card empty">الربط غير مفعّل بعد في قاعدة البيانات.</div>'; return; }
+    var pend = ev.filter(function (e) { return e.status === 'pending'; });
+    var unm = ev.filter(function (e) { return e.status === 'unmatched'; });
+    var done = ev.filter(function (e) { return e.status === 'approved' || e.status === 'rejected'; }).slice(0, 15);
+    function who(e) { return e.students ? e.students.full_name : e.raw_name; }
+    function cls(e) { return e.classes ? className(e.classes) : (e.raw_grade ? GRADES[e.raw_grade] + ' / ' + ar(e.raw_section) : ''); }
+    var html = '<div class="card"><h2>' + esc(src.title) + '</h2><p class="muted">تصل مشاركات الطلاب في الإذاعة إلى هنا «بانتظار الاعتماد»، ولا تُحتسب نقاطًا إلا بعد موافقتك. لا تتكرر المشاركة الواحدة أبدًا.</p>';
+    if (S.me.role === 'admin') {
+      html += '<div class="row-actions" style="align-items:flex-end"><div class="field" style="min-width:140px"><label for="lkp">نقاط كل مشاركة</label><select id="lkp">' +
+        [1, 2, 3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (n === src.points ? ' selected' : '') + '>' + ar(n) + '</option>'; }).join('') + '</select></div>' +
+        '<label style="display:flex;gap:8px;align-items:center;min-height:44px"><input type="checkbox" id="lke"' + (src.enabled ? ' checked' : '') + '> الربط مفعّل</label>' +
+        '<button class="btn small" id="lks">حفظ</button><button class="btn small ghost" id="lkk">' + (src.secret_hash ? 'مفتاح جديد' : 'توليد مفتاح الربط') + '</button></div><div id="lkkey"></div>';
+    } else html += '<p class="hint">نقاط كل مشاركة: <b>' + ar(src.points) + '</b></p>';
+    html += '</div>';
+    html += '<div class="card"><h2>بانتظار الاعتماد (' + ar(pend.length) + ')</h2>';
+    if (!pend.length) html += '<p class="muted">لا توجد مشاركات معلّقة.</p>';
+    else {
+      html += '<div class="tbl-wrap"><table><thead><tr><th></th><th>الطالب</th><th>الفصل</th><th>المشاركة</th><th>التاريخ</th></tr></thead><tbody>' +
+        pend.map(function (e) { return '<tr><td><input type="checkbox" class="lkc" value="' + e.id + '" checked aria-label="تحديد"></td><td>' + esc(who(e)) + '</td><td>' + esc(cls(e)) + '</td><td>' + esc(e.title || '') + '</td><td>' + (e.event_date ? fmtDate(e.event_date) : '') + '</td></tr>'; }).join('') +
+        '</tbody></table></div><div class="row-actions"><button class="btn" id="lka">اعتماد المحدد</button><button class="btn danger" id="lkr">رفض المحدد</button></div>';
+    }
+    html += '</div>';
+    if (unm.length) {
+      html += '<div class="card"><h2>لم تُطابَق مع طالب (' + ar(unm.length) + ')</h2><p class="muted">الاسم أو الفصل في الإذاعة يختلف عن المبادرون. صحّح الاسم أو انقل الطالب ثم أعد المزامنة، أو تجاهلها.</p>' +
+        '<div class="tbl-wrap"><table><tbody>' + unm.map(function (e) { return '<tr><td>' + esc(e.raw_name) + '</td><td>' + esc(cls(e)) + '</td><td>' + esc(e.title || '') + '</td><td><button class="btn small ghost" data-ig="' + e.id + '">تجاهل</button></td></tr>'; }).join('') + '</tbody></table></div></div>';
+    }
+    if (done.length) {
+      html += '<div class="card"><h2>آخر القرارات</h2><div class="tbl-wrap"><table><tbody>' + done.map(function (e) {
+        return '<tr><td>' + esc(who(e)) + '</td><td>' + esc(e.title || '') + '</td><td>' + (e.status === 'approved' ? '+' + ar(e.points) + ' معتمدة' : 'مرفوضة') + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    }
+    v.innerHTML = html;
+    function ids() { return Array.prototype.map.call(v.querySelectorAll('.lkc:checked'), function (c) { return c.value; }); }
+    var a = $('#lka'), r = $('#lkr');
+    if (a) a.onclick = async function () {
+      var x = ids(); if (!x.length) return toast('حدّد مشاركة واحدة على الأقل.', { bad: true });
+      var res = await sb.rpc('link_approve', { p_ids: x });
+      if (res.error) return toast(friendly(res.error), { bad: true });
+      toast('اعتُمدت ' + ar(res.data) + ' مشاركة.'); if (S.classId) await loadClass(); viewLink(v);
+    };
+    if (r) r.onclick = async function () {
+      var x = ids(); if (!x.length) return toast('حدّد مشاركة واحدة على الأقل.', { bad: true });
+      if (!(await confirmBox('رفض المشاركات المحددة؟'))) return;
+      var res = await sb.rpc('link_reject', { p_ids: x });
+      if (res.error) return toast(friendly(res.error), { bad: true });
+      toast('رُفضت ' + ar(res.data) + '.'); viewLink(v);
+    };
+    v.querySelectorAll('[data-ig]').forEach(function (b) {
+      b.onclick = async function () { var res = await sb.rpc('link_reject', { p_ids: [b.dataset.ig] }); if (res.error) return toast(friendly(res.error), { bad: true }); viewLink(v); };
+    });
+    async function conf(newSecret) {
+      var res = await sb.rpc('link_configure', { p_source: 'radio', p_enabled: $('#lke').checked, p_points: +$('#lkp').value, p_new_secret: newSecret });
+      if (res.error) { toast(friendly(res.error), { bad: true }); return null; }
+      return res;
+    }
+    var sv = $('#lks'), kk = $('#lkk');
+    if (sv) sv.onclick = async function () { if (await conf(false)) { toast('حُفظت الإعدادات.'); viewLink(v); } };
+    if (kk) kk.onclick = async function () {
+      var res = await conf(true); if (!res) return;
+      $('#lkkey').innerHTML = '<div class="card" style="margin-top:10px"><p class="muted">مفتاح الربط — يظهر مرة واحدة فقط، انسخه الآن:</p><p dir="ltr" style="user-select:all;word-break:break-all"><b>' + esc(res.data) + '</b></p></div>';
+    };
   }
 
   /* ---------- الإعدادات والنسخ الاحتياطي ---------- */
