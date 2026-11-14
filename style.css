@@ -1,5 +1,5 @@
 /* المبادرون — أنماط مشتركة (هوية لوحة منصاتي: أزرق وأخضر، خط النسخ العريض، RTL) */
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;800;900&display=swap');
 :root{
   --bg:#F5F9FC; --card:#FFFFFF; --ink:#1D2E34; --ink-soft:#555E6A;
   --band:#1762B6; --band-ink:#FFFFFF; --line:#D6E0E3; --chip:#EEF5F8;
@@ -204,7 +204,7 @@ input,select,textarea{border-radius:6px;background:var(--card);border-color:var(
 .splash .sh{font-family:var(--font);font-weight:700;font-size:clamp(17px,3vw,24px);opacity:0;
   animation:splashFade 1.2s ease 5s forwards,splashPulse 2.4s ease-in-out 6.2s infinite;
   border:2px solid rgba(255,255,255,.85);border-radius:6px;padding:6px 26px}
-@keyframes splashGrow{0%{transform:scale(.08);opacity:0;letter-spacing:-.05em}35%{opacity:1}100%{transform:scale(1);opacity:1;letter-spacing:0}}
+@keyframes splashGrow{0%{transform:scale(.08);opacity:0}35%{opacity:1}100%{transform:scale(1);opacity:1}}
 @keyframes splashFade{to{opacity:1}}
 @keyframes splashPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media (prefers-reduced-motion:reduce){.splash .sw,.splash .sb,.splash .sh{animation:none;opacity:1}.splash{transition:none}}
@@ -249,3 +249,20 @@ input,select,textarea{border-radius:6px;background:var(--card);border-color:var(
 @keyframes pkIn{from{opacity:0}to{opacity:1}}
 @keyframes pkPop{from{opacity:0;transform:scale(.3)}to{opacity:1;transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){.pick,.pk-c{animation:none}}
+
+/* ---------- شاشة اختيار الصف/الفصل (دوائر كبيرة) وضبط الحروف ---------- */
+.rail{display:none!important}
+.stage{min-height:64vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;position:relative;text-align:center}
+.stage .bk{position:absolute;top:0;right:0}
+.stage h2{font-size:clamp(28px,5vw,44px);font-weight:800;line-height:1.7}
+.stage .pk-c{width:clamp(120px,26vw,250px)}
+.pk-c{line-height:1.5;letter-spacing:0}
+.pk-c span{font-weight:700;line-height:1.5;margin:0}
+.pk-c b{font-weight:800;line-height:1.3;margin:0;padding-top:16px;font-size:clamp(46px,8.5vw,92px)}
+.pk-c.g b{font-size:clamp(30px,6.4vw,58px)}
+.circle{line-height:1.5;padding:20px;gap:2px}
+.circle .nm{font-weight:700;line-height:1.7;max-height:3.5em}
+.circle .pts{font-weight:800;line-height:1.4}
+.circle .lvn{line-height:1.6}
+.rasd-head h2{font-weight:800;line-height:1.7}
+h1,h2,h3{letter-spacing:0}
