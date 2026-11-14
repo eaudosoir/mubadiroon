@@ -188,3 +188,7 @@ input,select,textarea{border-radius:6px;background:var(--card);border-color:var(
 .okmsg{background:var(--soft)}
 .sheet{background:var(--bg)}
 .sig-top{display:none}
+.topbar .in{flex-wrap:nowrap}
+.topbar h1{white-space:nowrap;flex:1 1 auto;overflow:visible}
+.topbar select{width:auto;flex:0 0 auto;max-width:200px;min-width:120px}
+.topbar .btn{flex:0 0 auto}
