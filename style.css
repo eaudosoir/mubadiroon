@@ -187,3 +187,4 @@ input,select,textarea{border-radius:6px;background:var(--card);border-color:var(
 .toast{background:var(--band);color:#fff;border-radius:8px}
 .okmsg{background:var(--soft)}
 .sheet{background:var(--bg)}
+.sig-top{display:none}
